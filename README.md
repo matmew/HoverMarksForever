@@ -71,9 +71,14 @@ forgets a custom one.
 - Hotkeys are keyboard only; mouse buttons cannot be bound.
 - The game's own rules about who can set markers in a group still apply.
 
+## Download
+
+Latest version, always at the same link:
+https://github.com/matmew/HoverMarksForever/releases/latest/download/HoverMarksForever.zip
+
 ## Installing by hand
 
-Copy the `HoverMarksForever` folder into
+Unzip the download and copy the `HoverMarksForever` folder into
 `World of Warcraft/_forever_/Interface/AddOns`, then restart the game.
 
 ## Licence
