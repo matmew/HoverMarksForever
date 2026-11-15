@@ -1,12 +1,23 @@
 # HoverMarks Forever
 
-Mark your target without giving up any keybinds. Built for the WoW Forever
-client (interface 16001).
+<!-- This description must stay word-for-word identical to the CurseForge
+     project description. Change both together. -->
 
-While your mouse is over your target frame, your chosen hotkeys apply
-raid target markers to your target. Move the mouse away and those keys go
-straight back to casting your spells. Your normal keybindings are never
-changed.
+With HoverMarks Forever you can mark targets quickly without interrupting your damage, tanking or healing rotation. It uses the very same keys you normally press for your spells: when your mouse is over a target frame, they mark your target instead. Use it during a spell cast for zero downtime.
+
+* Supports all eight raid target markers
+* Keeps your standard keybindings intact
+* Lets you customise every marker hotkey and set a keybind to clear all markers
+* Marks mid-cast, so your rotation never stops
+* Perfect for proactive tab-targetters looking to maximise throughput
+
+By default, keys 1–8 apply raid markers while your mouse is over a target frame. Marking isn't a spell and doesn't trigger the global cooldown, so it never delays your next cast. Move your mouse away, and those keys work normally again.
+
+Use /hmf to open the settings window and rebind marker keys. You can also bind an optional hotkey that clears all markers at once from anywhere; it takes over the key you give it, so pick a spare one. Works in combat, with the Blizzard target frame and popular unit-frame addons.
+
+<!-- End of the shared description. Everything below is extra reference. -->
+
+Built for the WoW Forever client (interface 16001).
 
 ## Using it
 
