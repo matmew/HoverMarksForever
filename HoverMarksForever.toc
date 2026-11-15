@@ -1,0 +1,9 @@
+## Interface: 16001
+## Title: HoverMarks Forever
+## Notes: Hover your target frame and press a hotkey to mark your target. Type /hmf for settings.
+## Author: Matt
+## Version: 1.1
+## SavedVariables: HoverMarksForeverDB
+## IconTexture: Interface\TargetingFrame\UI-RaidTargetingIcon_8
+
+HoverMarksForever.lua
