@@ -44,16 +44,27 @@ Marking and clearing both work in combat.
 | 7   | Moon     |
 | 8   | Circle   |
 
+## Minimap button
+
+- Left click turns the addon on or off. Chat confirms it, in green when
+  enabled and red when disabled, and the button goes grey while it is off.
+- Right click opens the settings window.
+- Drag the button to move it round the minimap.
+
+While the addon is off, no hotkeys are taken over at all, including the
+"clear all" key.
+
 ## Settings
 
-Type `/hmf` to open the settings window.
+Type `/hmf`, or right click the minimap button, to open the settings window.
 
 - Click a marker (its icon or its box), then press a key to bind it. Key
   combinations such as Shift-1 work too.
 - Right click a marker to unbind it.
 - The "clear all" hotkey is bound the same way, in its own section below the
   markers. It starts unbound.
-- The Defaults button restores the original hotkeys and window position.
+- The Defaults button restores the original hotkeys and window position, turns
+  the addon back on, and returns the minimap button to its starting place.
 
 Settings are saved account-wide. Changes made during combat apply when combat
 ends.

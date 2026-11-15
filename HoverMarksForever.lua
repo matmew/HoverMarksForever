@@ -5,7 +5,7 @@
 -- Type /hmf to choose the hotkey for each marker.
 
 local ADDON = ...
-local VERSION = "1.1" -- keep in step with ## Version in the .toc
+local VERSION = "1.2" -- keep in step with ## Version in the .toc
 local NUM_MARKERS = 8
 -- Order the markers are listed in the settings window:
 -- skull, cross, square, diamond, star, triangle, moon, circle.
@@ -50,12 +50,13 @@ local DEFAULT_CLEAR_KEY = false
 -- turn pulls them off everything else; the last line then clears the player.
 local CLEAR_ALL_MACRO = "/tm [@player] 1\n/tm [@player] 2\n/tm [@player] 3\n/tm [@player] 4\n"
     .. "/tm [@player] 5\n/tm [@player] 6\n/tm [@player] 7\n/tm [@player] 8\n/tm [@player] 0"
-local db = { binds = { unpack(DEFAULTS, 1, NUM_MARKERS) }, clearKey = DEFAULT_CLEAR_KEY }
+local db = { binds = { unpack(DEFAULTS, 1, NUM_MARKERS) }, clearKey = DEFAULT_CLEAR_KEY, enabled = true }
 local buttons = {}
 local overlays = {}     -- host frame -> its hover layer
 local overlayList = {}  -- the same hover layers, in the order they were made
 local enterSnippet = "" -- secure code every hover layer runs on mouse enter
 local buttonsBuilt, panel, pending, listening
+local UpdateMinimapButton -- defined with the minimap button, further down
 -- Owns the always-on binding for the clear-all hotkey.
 local globalBinds = CreateFrame("Frame", "HoverMarksForeverGlobalBinds", UIParent)
 
@@ -158,12 +159,14 @@ local function Apply()
     -- The clear-all hotkey is bound all the time, not just while hovering.
     -- Priority binding, so it also wins over action-bar addons' own
     -- override bindings for that key.
+    -- When the addon is switched off (minimap button), nothing is bound at
+    -- all: no clear-all key and no hover hotkeys.
     ClearOverrideBindings(globalBinds)
-    if db.clearKey then
+    if db.enabled and db.clearKey then
         SetOverrideBindingClick(globalBinds, true, db.clearKey, PREFIX .. "Clear", "LeftButton")
     end
     for marker = 1, NUM_MARKERS do
-        local key = db.binds[marker]
+        local key = db.enabled and db.binds[marker]
         if key then
             lines[#lines + 1] = ("self:SetBindingClick(true, %q, %q, \"LeftButton\")")
                 :format(key, PREFIX .. marker)
@@ -286,7 +289,8 @@ local function Refresh()
     elseif pending then
         panel.note:SetText("|cffff8040Saved. Applies after combat.|r")
     else
-        panel.note:SetText("") -- nothing to report: the section descriptions cover the rest
+        -- Nothing else to report: the section descriptions cover the rest.
+        panel.note:SetText(db.enabled and "" or "|cffff4040HoverMarks is off.|r Click the minimap button to turn it on.")
     end
 end
 
@@ -361,6 +365,9 @@ local CLEAR_TIP_LINES = { "—", "Click to bind.", "Right click to unbind.", "Wo
 local function ResetToDefaults()
     db.binds = { unpack(DEFAULTS, 1, NUM_MARKERS) }
     db.clearKey = DEFAULT_CLEAR_KEY
+    db.enabled = true
+    db.minimapAngle = nil
+    if UpdateMinimapButton then UpdateMinimapButton() end
     db.pos = nil
     if panel then
         listening = nil
@@ -675,6 +682,143 @@ local function ListFrames()
     Say("Attached to: " .. table.concat(names, ", ") .. ".")
 end
 
+local function ToggleWindow()
+    if not panel then BuildPanel() end
+    if panel:IsShown() then
+        panel:Hide()
+    else
+        Refresh()
+        panel:Show()
+    end
+end
+
+---------------------------------------------------------------------------
+-- Minimap button
+--   Left click   turn the addon on or off
+--   Right click  open or close the settings window
+--   Drag         move it round the minimap
+---------------------------------------------------------------------------
+
+-- The picture inside the minimap button's border: a simplified version of
+-- the logo, made to read at about 18 pixels across.
+local MINIMAP_ICON_TEXTURE = "Interface\\AddOns\\" .. ADDON .. "\\Media\\MinimapIcon"
+local DEFAULT_MINIMAP_ANGLE = 215 -- degrees anticlockwise from east: lower left
+local minimapButton
+
+UpdateMinimapButton = function()
+    if not minimapButton then return end
+    -- Greyed out while the addon is off, so its state shows at a glance.
+    minimapButton.icon:SetDesaturated(not db.enabled)
+    minimapButton.icon:SetAlpha(db.enabled and 1 or 0.6)
+    local angle = math.rad(db.minimapAngle or DEFAULT_MINIMAP_ANGLE)
+    local radius = Minimap:GetWidth() / 2 + 5
+    minimapButton:ClearAllPoints()
+    minimapButton:SetPoint("CENTER", Minimap, "CENTER", math.cos(angle) * radius, math.sin(angle) * radius)
+end
+
+local function ShowMinimapTip(self)
+    -- Two columns: name and version on the first line (gold / grey), then
+    -- each action in blue on the left with what it does in white on the right.
+    GameTooltip:SetOwner(self, "ANCHOR_LEFT")
+    GameTooltip:AddDoubleLine("HoverMarks Forever", "v" .. VERSION, 1, 0.82, 0, 0.6, 0.6, 0.6)
+    GameTooltip:AddLine(" ")
+    GameTooltip:AddDoubleLine("Left Click", "Toggle Addon", 0.2, 0.7, 1, 1, 1, 1)
+    GameTooltip:AddDoubleLine("Right Click", "Open Settings", 0.2, 0.7, 1, 1, 1, 1)
+    GameTooltip:Show()
+end
+
+local function SetEnabled(enabled)
+    db.enabled = enabled
+    local applied = Apply()
+    UpdateMinimapButton()
+    Refresh()
+    -- The whole notice, addon name included, is green for on and red for
+    -- off, so it does not go through Say (which colours the name gold).
+    local notice = "HoverMarks Forever is " .. (enabled and "enabled." or "disabled.")
+        .. (applied and "" or " Applies after combat.")
+    if enabled then
+        DEFAULT_CHAT_FRAME:AddMessage(notice, 0.25, 1, 0.25)
+    else
+        DEFAULT_CHAT_FRAME:AddMessage(notice, 1, 0.25, 0.25)
+    end
+end
+
+local function BuildMinimapButton()
+    if minimapButton or not Minimap then return end
+    local button = CreateFrame("Button", "HoverMarksForeverMinimapButton", Minimap)
+    button:SetSize(31, 31)
+    button:SetFrameStrata("MEDIUM")
+    button:SetFrameLevel(8)
+    button:RegisterForClicks("LeftButtonUp", "RightButtonUp")
+    button:RegisterForDrag("LeftButton")
+
+    -- The standard minimap button, built the same way every other addon's
+    -- is: a dark round backing, the icon inside, the game's gold tracking
+    -- border over the top, and the usual highlight on hover.
+    --
+    -- The border art differs between client generations, so the sizes and
+    -- offsets come in two sets, copied from LibDBIcon (the library most
+    -- addons use for this). Modern clients have the addon compartment and
+    -- use the centred layout; older ones use the offset layout. Using the
+    -- wrong set leaves the icon visibly off-centre in the ring.
+    local modern = AddonCompartmentFrame ~= nil
+    local backing = button:CreateTexture(nil, "BACKGROUND")
+    backing:SetTexture("Interface\\Minimap\\UI-Minimap-Background")
+    button.icon = button:CreateTexture(nil, "ARTWORK")
+    button.icon:SetTexture(MINIMAP_ICON_TEXTURE)
+    local border = button:CreateTexture(nil, "OVERLAY")
+    border:SetTexture("Interface\\Minimap\\MiniMap-TrackingBorder")
+    border:SetPoint("TOPLEFT", 0, 0)
+    -- The icon keeps the library's centre point, with no shift, but is drawn
+    -- 3px larger than the library's size. The artwork is a round disc, and
+    -- at the library's size it is smaller than the ring's opening, leaving
+    -- an uneven dark gap; slightly larger, the ring overlaps its edge.
+    if modern then
+        backing:SetSize(24, 24)
+        backing:SetPoint("CENTER", 0, 0)
+        button.icon:SetSize(21, 21)
+        button.icon:SetPoint("CENTER")
+        border:SetSize(50, 50)
+    else
+        backing:SetSize(20, 20)
+        backing:SetPoint("TOPLEFT", 7, -5)
+        button.icon:SetSize(20, 20)
+        button.icon:SetPoint("CENTER", button, "TOPLEFT", 15.5, -14.5)
+        border:SetSize(53, 53)
+    end
+
+    button:SetHighlightTexture("Interface\\Minimap\\UI-Minimap-ZoomButton-Highlight")
+
+    button:SetScript("OnClick", function(self, mouseButton)
+        if mouseButton == "RightButton" then
+            ToggleWindow()
+        else
+            SetEnabled(not db.enabled)
+        end
+        if GameTooltip:IsOwned(self) then ShowMinimapTip(self) end
+    end)
+    button:SetScript("OnEnter", ShowMinimapTip)
+    button:SetScript("OnLeave", function() GameTooltip:Hide() end)
+    -- Dragging slides the button round the edge of the minimap.
+    button:SetScript("OnDragStart", function(self)
+        GameTooltip:Hide()
+        self:SetScript("OnUpdate", function()
+            local centreX, centreY = Minimap:GetCenter()
+            local scale = Minimap:GetEffectiveScale()
+            local cursorX, cursorY = GetCursorPosition()
+            db.minimapAngle = math.deg(math.atan2(cursorY / scale - centreY, cursorX / scale - centreX))
+            UpdateMinimapButton()
+        end)
+    end)
+    button:SetScript("OnDragStop", function(self)
+        self:SetScript("OnUpdate", nil)
+    end)
+
+    button.modern = modern
+    minimapButton = button
+    UpdateMinimapButton()
+end
+
 SLASH_HOVERMARKSFOREVER1 = "/hmf"
 SlashCmdList.HOVERMARKSFOREVER = function(message)
     local command, rest = (message or ""):match("^%s*(%S*)%s*(.-)%s*$")
@@ -684,13 +828,7 @@ SlashCmdList.HOVERMARKSFOREVER = function(message)
     elseif command == "frames" then
         ListFrames()
     elseif command == "" then
-        if not panel then BuildPanel() end
-        if panel:IsShown() then
-            panel:Hide()
-        else
-            Refresh()
-            panel:Show()
-        end
+        ToggleWindow()
     else
         Say("Commands: /hmf (settings), /hmf frame, /hmf frame <name>, /hmf frame clear, /hmf frames.")
     end
@@ -728,6 +866,12 @@ local function LoadSettings()
     if type(saved.customFrame) ~= "string" or saved.customFrame == "" then
         saved.customFrame = nil
     end
+    -- On unless the player switched it off with the minimap button.
+    if saved.enabled ~= false then saved.enabled = true end
+    -- Where the minimap button was dragged to, in degrees; nil = default.
+    if type(saved.minimapAngle) ~= "number" then saved.minimapAngle = nil end
+    -- Left over from a removed test command; cleared so it is not kept.
+    saved.iconNudge = nil
     -- If the saved hotkeys are still an earlier version's defaults, move to
     -- the current defaults; customised hotkeys are kept.
     if (tonumber(saved.version) or 0) < 3 then
@@ -763,6 +907,7 @@ events:SetScript("OnEvent", function(_, event, name)
         Apply()
     elseif event == "PLAYER_LOGIN" then
         Apply()
+        BuildMinimapButton()
     elseif event == "PLAYER_ENTERING_WORLD" then
         -- Unit-frame addons may build their target frame around now or a
         -- moment later, so look again shortly after.

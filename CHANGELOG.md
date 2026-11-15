@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.2
+
+- New minimap button. Left click turns the addon on or off, right click opens
+  the settings window, and dragging moves it round the minimap.
+- Turning the addon off releases every hotkey, including the clear-all key.
+  Chat confirms the change in green (enabled) or red (disabled).
+- New addon icon.
+
 ## 1.1
 
 - New "clear all" hotkey: one press removes every marker, from anywhere, with
