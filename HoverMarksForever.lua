@@ -5,7 +5,7 @@
 -- Type /hmf to choose the hotkey for each marker.
 
 local ADDON = ...
-local VERSION = "1.2" -- keep in step with ## Version in the .toc
+local VERSION = "1.2.1" -- keep in step with ## Version in the .toc
 local NUM_MARKERS = 8
 -- Order the markers are listed in the settings window:
 -- skull, cross, square, diamond, star, triangle, moon, circle.
@@ -50,12 +50,17 @@ local DEFAULT_CLEAR_KEY = false
 -- turn pulls them off everything else; the last line then clears the player.
 local CLEAR_ALL_MACRO = "/tm [@player] 1\n/tm [@player] 2\n/tm [@player] 3\n/tm [@player] 4\n"
     .. "/tm [@player] 5\n/tm [@player] 6\n/tm [@player] 7\n/tm [@player] 8\n/tm [@player] 0"
-local db = { binds = { unpack(DEFAULTS, 1, NUM_MARKERS) }, clearKey = DEFAULT_CLEAR_KEY, enabled = true }
+local db = { binds = { unpack(DEFAULTS, 1, NUM_MARKERS) }, clearKey = DEFAULT_CLEAR_KEY, enabled = true, toggle = true }
 local buttons = {}
 local overlays = {}     -- host frame -> its hover layer
 local overlayList = {}  -- the same hover layers, in the order they were made
 local enterSnippet = "" -- secure code every hover layer runs on mouse enter
 local buttonsBuilt, panel, pending, listening
+local header -- secure frame holding the toggle's state, made with the buttons
+-- Secure code that forgets the last mark; run when the mouse enters or
+-- leaves a target frame, or the frame is hidden.
+local RESET_TOGGLE = 'self:GetFrameRef("hmfheader"):SetAttribute("lastmark", 0)\n'
+local quietUntil = 0 -- clear-all chat lines are hidden until this time (GetTime)
 local UpdateMinimapButton -- defined with the minimap button, further down
 -- Owns the always-on binding for the clear-all hotkey.
 local globalBinds = CreateFrame("Frame", "HoverMarksForeverGlobalBinds", UIParent)
@@ -65,17 +70,43 @@ local function Say(message)
 end
 
 ---------------------------------------------------------------------------
+-- Chat: hide the "X sets <mark> on Y" lines the clear-all macro causes
+---------------------------------------------------------------------------
+
+-- The clear-all key marks the player with each of the eight marks in turn,
+-- and the game prints a chat line for every one. For two seconds after the
+-- key is used, any chat line carrying a raid-target icon is hidden. At any
+-- other time nothing is touched, so other players' marking still shows.
+local function QuietClearAll(_, event, text)
+    if GetTime() >= quietUntil then return false end
+    if event == "CHAT_MSG_TARGETICONS" then return true end
+    if issecretvalue and issecretvalue(text) then return false end
+    return type(text) == "string" and text:find("RaidTargetingIcon", 1, true) ~= nil
+end
+do
+    local addFilter = ChatFrame_AddMessageEventFilter
+        or (ChatFrameUtil and ChatFrameUtil.AddMessageEventFilter)
+    if addFilter then
+        addFilter("CHAT_MSG_TARGETICONS", QuietClearAll)
+        addFilter("CHAT_MSG_SYSTEM", QuietClearAll)
+    end
+end
+
+---------------------------------------------------------------------------
 -- Secure side: hidden marker buttons and a hover layer on each target frame
 ---------------------------------------------------------------------------
 
 local function MakeMarkerButton(name, action, marker)
     local button = CreateFrame("Button", name, UIParent, "SecureActionButtonTemplate")
-    -- Registered for both so it fires once whichever way the
-    -- "cast on key down" setting is set.
-    button:RegisterForClicks("AnyDown", "AnyUp")
+    -- Acts on the key press itself, whatever the "cast on key down" setting
+    -- is, and only once: the "press again" toggle below flips state on every
+    -- click it sees, so it must never see both the press and the release.
+    button:RegisterForClicks("AnyDown")
+    button:SetAttribute("useOnKeyDown", true)
     button:SetAttribute("type", "raidtarget")
     button:SetAttribute("action", action)
     button:SetAttribute("marker", marker)
+    button:SetAttribute("hmfmark", marker)
     button:SetAttribute("unit", "target")
     button:SetAttribute("checkselfcast", false)
     button:SetAttribute("checkfocuscast", false)
@@ -87,13 +118,40 @@ end
 -- Must be called out of combat.
 local function BuildButtons()
     if buttonsBuilt then return end
+    -- The "press again to clear" toggle lives here, in secure code, so it
+    -- works in combat and never has to read the target's current mark (which
+    -- the game may hide from addons). It only remembers which mark the last
+    -- press applied: pressing the same one again clears it instead.
+    -- Attributes on this frame: toggleon (1 or 0) and lastmark (0 = none).
+    header = CreateFrame("Frame", "HoverMarksForeverHeader", UIParent, "SecureHandlerBaseTemplate")
+    header:SetAttribute("toggleon", 1)
+    header:SetAttribute("lastmark", 0)
     for marker = 1, NUM_MARKERS do
         buttons[marker] = MakeMarkerButton(PREFIX .. marker, "set", marker)
+        header:WrapScript(buttons[marker], "OnClick", [[
+            local mark = self:GetAttribute("hmfmark")
+            if control:GetAttribute("toggleon") == 1 and control:GetAttribute("lastmark") == mark then
+                self:SetAttribute("action", "clear")
+                self:SetAttribute("marker", 0)
+                control:SetAttribute("lastmark", 0)
+            else
+                self:SetAttribute("action", "set")
+                self:SetAttribute("marker", mark)
+                control:SetAttribute("lastmark", mark)
+            end
+        ]])
     end
     local clear = CreateFrame("Button", PREFIX .. "Clear", UIParent, "SecureActionButtonTemplate")
     clear:RegisterForClicks("AnyDown", "AnyUp")
     clear:SetAttribute("type", "macro")
     clear:SetAttribute("macrotext", CLEAR_ALL_MACRO)
+    -- Clearing everything also forgets the last mark, so the next press
+    -- applies instead of "clearing" something that is already gone.
+    header:WrapScript(clear, "OnClick", [[ control:SetAttribute("lastmark", 0) ]])
+    -- Clearing everything this way briefly marks the player with each mark
+    -- in turn, and the game prints a chat line for each. Hide those lines
+    -- for a moment after the clear key is used (see QuietClearAll above).
+    clear:HookScript("PreClick", function() quietUntil = GetTime() + 2 end)
     buttonsBuilt = true
 end
 
@@ -119,10 +177,12 @@ local function Attach(host, hostName)
         if layer.SetPropagateMouseMotion then
             pcall(layer.SetPropagateMouseMotion, layer, true)
         end
+        -- Each hover starts the toggle afresh: the first press applies.
+        layer:SetFrameRef("hmfheader", header)
         layer:SetAttribute("_onenter", enterSnippet)
-        layer:SetAttribute("_onleave", "self:ClearBindings()")
+        layer:SetAttribute("_onleave", RESET_TOGGLE .. "self:ClearBindings()")
         -- Losing the target while hovering hides the frame without a "leave".
-        layer:SetAttribute("_onhide", "self:ClearBindings()")
+        layer:SetAttribute("_onhide", RESET_TOGGLE .. "self:ClearBindings()")
         return layer
     end)
     if not ok then return end
@@ -165,6 +225,30 @@ local function Apply()
     if db.enabled and db.clearKey then
         SetOverrideBindingClick(globalBinds, true, db.clearKey, PREFIX .. "Clear", "LeftButton")
     end
+    -- "Press again to clear" on or off (see BuildButtons for how it works).
+    if header then
+        header:SetAttribute("toggleon", db.toggle and 1 or 0)
+        header:SetAttribute("lastmark", 0)
+    end
+    -- Ctrl + a marker's key clears every marker instead of applying that one.
+    -- These lines go first, so a marker whose own key already uses Ctrl
+    -- (and so would collide) still wins on that key.
+    if db.enabled then
+        for marker = 1, NUM_MARKERS do
+            local key = db.binds[marker]
+            if key then
+                local base = key:match("[^-]+$") or "-"
+                local prefix = key:sub(1, #key - #base)
+                if not prefix:find("CTRL-", 1, true) then
+                    -- Keep the game's ALT-CTRL-SHIFT modifier order.
+                    local combo = (prefix:find("ALT-", 1, true) and "ALT-" or "") .. "CTRL-"
+                        .. (prefix:find("SHIFT-", 1, true) and "SHIFT-" or "") .. base
+                    lines[#lines + 1] = ("self:SetBindingClick(true, %q, %q, \"LeftButton\")")
+                        :format(combo, PREFIX .. "Clear")
+                end
+            end
+        end
+    end
     for marker = 1, NUM_MARKERS do
         local key = db.enabled and db.binds[marker]
         if key then
@@ -172,7 +256,7 @@ local function Apply()
                 :format(key, PREFIX .. marker)
         end
     end
-    enterSnippet = table.concat(lines, "\n")
+    enterSnippet = RESET_TOGGLE .. table.concat(lines, "\n")
     for _, overlay in ipairs(overlayList) do
         ClearOverrideBindings(overlay)
         overlay:SetAttribute("_onenter", enterSnippet)
@@ -282,6 +366,7 @@ local function Refresh()
         row.icon:SetDesaturated(not key and not row.active)
         row.icon:SetAlpha((key or row.active) and 1 or 0.45)
     end
+    if panel.toggleBox then panel.toggleBox:SetChecked(db.toggle) end
 
     -- One status line, most urgent message first.
     if listening then
@@ -304,6 +389,15 @@ local function Commit()
     if not Apply() then
         Say("Saved. Applies after combat.")
     end
+end
+
+local function OnToggleClick(self)
+    if listening then StopListening() end
+    ClickSound()
+    db.toggle = self:GetChecked() and true or false
+    Commit()
+    Refresh()
+    if self.hovered then ShowBoxTip(self) end
 end
 
 local function OnKeyDown(_, key)
@@ -366,6 +460,7 @@ local function ResetToDefaults()
     db.binds = { unpack(DEFAULTS, 1, NUM_MARKERS) }
     db.clearKey = DEFAULT_CLEAR_KEY
     db.enabled = true
+    db.toggle = true
     db.minimapAngle = nil
     if UpdateMinimapButton then UpdateMinimapButton() end
     db.pos = nil
@@ -392,7 +487,7 @@ StaticPopupDialogs[RESET_POPUP] = {
 }
 
 local function BuildPanel()
-    -- The window is portrait (340 x 456), sized to its content. Everything
+    -- The window is portrait (340 x 502), sized to its content. Everything
     -- sits on the same two-column grid, filled left to right then down:
     -- markers 1 2 / 3 4 / 5 6 / 7 8 in ORDER; the clear hotkey sits centred below.
     --
@@ -411,7 +506,8 @@ local function BuildPanel()
     --   372  faint rule
     --   392  the clear hotkey row                    level 3
     --   436  status line (small, grey)               level 4
-    local WIDTH, HEIGHT = 340, 456
+    local TOGGLE_SPACE = 12 + 26 + 8              -- gap + switch height + gap below
+    local WIDTH, HEIGHT = 340, 456 + TOGGLE_SPACE
     local NOTE_SPACE = 30                        -- room for a section's note
     local EDGE, GAP = 20, 28                     -- side margin, gap between columns
     local TOP, ROW = 134 + NOTE_SPACE, 34        -- first marker row, row pitch
@@ -531,7 +627,7 @@ local function BuildPanel()
     end
 
     -- Marker hotkeys ---------------------------------------------------------
-    Section("Marker Hover Hotkeys", "Press your chosen hotkey while hovering over a\nTarget Frame to mark your target quickly.", -TOP,
+    Section("Mark Hover Hotkeys", "Press your chosen hotkey while hovering over a\nTarget Frame to mark your target quickly.", -TOP,
         "These hotkeys will only be active when\nhovering over a target frame.")
     panel.rows = {}
     -- One bindable row: an icon and a hotkey box, with its top-left at x, y.
@@ -577,11 +673,40 @@ local function BuildPanel()
             ColumnX((position - 1) % 2), -TOP - math.floor((position - 1) / 2) * ROW)
     end
 
+    -- "Press again to clear" checkbox, centred under the marker rows: the
+    -- game's standard check button with its label to the right. The label is
+    -- part of the click area, so either one can be clicked.
+    local LABEL = "Press again to clear"
+    local check = CreateFrame("CheckButton", nil, panel, "UICheckButtonTemplate")
+    check:SetSize(24, 24)
+    local label = check:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+    label:SetPoint("LEFT", check, "RIGHT", 4, 0)
+    label:SetText(LABEL)
+    local width = 24 + 4 + label:GetStringWidth()
+    check:SetPoint("TOPLEFT", panel, "TOPLEFT", (WIDTH - width) / 2, -TOP - 3 * ROW - BOX_HEIGHT - 12)
+    check:SetHitRectInsets(0, -(label:GetStringWidth() + 6), 0, 0)
+    check.tipTitle = LABEL
+    check.tipLines = {
+        "—",
+        "Pressing a mark's mouseover hotkey again clears that particular mark.",
+        "|cffdbc794Only works while your mouse is over a target frame.|r", -- the headings' beige
+    }
+    check:SetScript("OnClick", OnToggleClick)
+    check:SetScript("OnEnter", function(self)
+        self.hovered = true
+        ShowBoxTip(self)
+    end)
+    check:SetScript("OnLeave", function(self)
+        self.hovered = nil
+        GameTooltip:Hide()
+    end)
+    panel.toggleBox = check
+
     -- Clear marker -----------------------------------------------------------
     -- Heading, description, rule, then a single row like the marker rows,
     -- centred in the window: one hotkey that removes every marker, anywhere.
-    local clearY = -TOP - 3 * ROW - BOX_HEIGHT - SECTION_GAP - HEADING_ABOVE
-    Section("Clear All Markers", "Press this hotkey anywhere to clear every mark at once. No target or hovering needed.", clearY)
+    local clearY = -TOP - 3 * ROW - BOX_HEIGHT - TOGGLE_SPACE - SECTION_GAP - HEADING_ABOVE
+    Section("Clear All Marks", "Press this hotkey anywhere to clear every mark at once. No target or hovering needed.", clearY)
     -- Sits a little lower than a marker row would, clear of the rule above,
     -- and 6px left of true centre: the box is visually heavier than the icon,
     -- so a mathematically centred pair looks pushed to the right.
@@ -819,6 +944,25 @@ local function BuildMinimapButton()
     UpdateMinimapButton()
 end
 
+-- Addon menu entry (the list opened from the minimap's addon button). The
+-- game builds it from the ## AddonCompartmentFunc lines in the .toc, which
+-- name these global functions. Same clicks as the minimap button.
+function HoverMarksForever_OnAddonCompartmentClick(_, mouseButton)
+    if mouseButton == "RightButton" then
+        ToggleWindow()
+    else
+        SetEnabled(not db.enabled)
+    end
+end
+
+function HoverMarksForever_OnAddonCompartmentEnter(_, menuButtonFrame)
+    ShowMinimapTip(menuButtonFrame)
+end
+
+function HoverMarksForever_OnAddonCompartmentLeave()
+    GameTooltip:Hide()
+end
+
 SLASH_HOVERMARKSFOREVER1 = "/hmf"
 SlashCmdList.HOVERMARKSFOREVER = function(message)
     local command, rest = (message or ""):match("^%s*(%S*)%s*(.-)%s*$")
@@ -868,6 +1012,8 @@ local function LoadSettings()
     end
     -- On unless the player switched it off with the minimap button.
     if saved.enabled ~= false then saved.enabled = true end
+    -- Pressing a marker's key again clears it. On unless switched off.
+    if saved.toggle ~= false then saved.toggle = true end
     -- Where the minimap button was dragged to, in degrees; nil = default.
     if type(saved.minimapAngle) ~= "number" then saved.minimapAngle = nil end
     -- Left over from a removed test command; cleared so it is not kept.
@@ -916,6 +1062,9 @@ events:SetScript("OnEvent", function(_, event, name)
     elseif event == "PLAYER_TARGET_CHANGED" then
         -- Cheap: a dozen name lookups. Catches frames created on first use.
         AttachAll()
+        -- A new target starts the "press again" toggle afresh. In combat the
+        -- state cannot be changed from here; it resets on the next hover.
+        if header and not InCombatLockdown() then header:SetAttribute("lastmark", 0) end
     elseif pending then
         -- Leaving combat with a change waiting.
         Apply()

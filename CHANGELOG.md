@@ -1,5 +1,16 @@
 # Changelog
 
+## 1.2.1
+
+- HoverMarks Forever now appears in the game's addon menu, the list opened from the
+  minimap's addon button. Left click turns the addon on or off, and right click
+  opens the settings window.
+- New "Press again to clear" checkbox in the settings window. With it on,
+  pressing a mark's hotkey again clears that mark. Hold Ctrl with a mark's
+  hotkey to clear every mark.
+- Clearing every mark no longer fills chat with "sets ... on ..." lines.
+- "Marker" is now "mark" throughout.
+
 ## 1.2
 
 - New minimap button. Left click turns the addon on or off, right click opens

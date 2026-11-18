@@ -2,8 +2,11 @@
 ## Title: HoverMarks Forever
 ## Notes: Hover your target frame and press a hotkey to mark your target. Type /hmf for settings.
 ## Author: Matt
-## Version: 1.2
+## Version: 1.2.1
 ## SavedVariables: HoverMarksForeverDB
 ## IconTexture: Interface\AddOns\HoverMarksForever\Media\Icon
+## AddonCompartmentFunc: HoverMarksForever_OnAddonCompartmentClick
+## AddonCompartmentFuncOnEnter: HoverMarksForever_OnAddonCompartmentEnter
+## AddonCompartmentFuncOnLeave: HoverMarksForever_OnAddonCompartmentLeave
 
 HoverMarksForever.lua
