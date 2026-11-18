@@ -3,17 +3,20 @@
 <!-- This description must stay word-for-word identical to the CurseForge
      project description. Change both together. -->
 
-With HoverMarks Forever you can mark targets quickly without interrupting your damage, tanking or healing rotation. It uses the very same keys you normally press for your spells: when your mouse is over a target frame, they mark your target instead. Use it during a spell cast for zero downtime.
+With HoverMarks Forever you can quickly mark targets without interrupting your damage, tanking or healing rotation. A lightweight addon, HMF uses the very same hotkeys you normally press for your spells: when your mouse is over a target frame, they mark your target instead. Use it during a spell cast for zero downtime.
 
-* Supports all eight raid target markers
-* Keeps your standard keybindings intact
-* Lets you customise every marker hotkey and set a keybind to clear all markers
-* Marks mid-cast, so your rotation never stops
+* Assists in marking mid-cast, so your rotation never stops
 * Perfect for proactive tab-targetters looking to maximise throughput
+* Lets you customise every target mark and set a dedicated keybind to clear all marks
+* Keeps your standard keybindings intact without the need for macros
 
-By default, keys 1–8 apply raid markers while your mouse is over a target frame. Marking isn't a spell and doesn't trigger the global cooldown, so it never delays your next cast. Move your mouse away, and those keys work normally again.
+By default, hotkeys 1–8 apply raid marks while your mouse is over a target frame. Marking isn't a spell and doesn't trigger the global cooldown, so it never delays your next cast. Move your mouse away, and those hotkeys work normally again.
 
-Use /hmf to open the settings window and rebind marker keys. You can also bind an optional hotkey that clears all markers at once from anywhere; it takes over the key you give it, so pick a spare one. Works in combat, with the Blizzard target frame and popular unit-frame addons.
+Use /hmf to open the settings window and rebind mark hotkeys. You can also bind an optional hotkey that clears all marks at once from anywhere; it takes over the hotkey you give it, so pick something that's not already in use.
+
+Compatible with not only the Blizzard target frames but any other target frames aswell, third-party or otherwise.
+
+Open source on GitHub: https://github.com/matmew/HoverMarksForever/releases/
 
 <!-- End of the shared description. Everything below is extra reference. -->
 
@@ -23,9 +26,9 @@ Built for the WoW Forever client (interface 16001).
 
 1. Target something.
 2. Move your mouse over the target frame.
-3. Press a marker hotkey.
+3. Press a mark hotkey.
 
-To remove every marker at once, bind a "clear all" hotkey in the settings
+To remove every mark at once, bind a "clear all" hotkey in the settings
 window. It works anywhere, with or without a target, so pick a spare key:
 whatever that key normally does is replaced.
 
@@ -33,7 +36,7 @@ Marking and clearing both work in combat.
 
 ## Default hotkeys
 
-| Key | Marker   |
+| Key | Mark   |
 |-----|----------|
 | 1   | Skull    |
 | 2   | Cross    |
@@ -58,11 +61,11 @@ While the addon is off, no hotkeys are taken over at all, including the
 
 Type `/hmf`, or right click the minimap button, to open the settings window.
 
-- Click a marker (its icon or its box), then press a key to bind it. Key
+- Click a mark (its icon or its box), then press a key to bind it. Key
   combinations such as Shift-1 work too.
-- Right click a marker to unbind it.
+- Right click a mark to unbind it.
 - The "clear all" hotkey is bound the same way, in its own section below the
-  markers. It starts unbound.
+  marks. It starts unbound.
 - The Defaults button restores the original hotkeys and window position, turns
   the addon back on, and returns the minimap button to its starting place.
 
@@ -91,7 +94,7 @@ forgets a custom one.
 - Enemy players cannot be marked. That is the game's rule, not the addon's:
   friendly players and NPCs (friendly or hostile) mark normally.
 - Hotkeys are keyboard only; mouse buttons cannot be bound.
-- The game's own rules about who can set markers in a group still apply.
+- The game's own rules about who can set marks in a group still apply.
 
 ## Download
 
