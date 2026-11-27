@@ -5,7 +5,7 @@
 -- Type /hmf to choose the hotkey for each marker.
 
 local ADDON = ...
-local VERSION = "1.2.1" -- keep in step with ## Version in the .toc
+local VERSION = "1.2.2" -- keep in step with ## Version in the .toc
 local NUM_MARKERS = 8
 -- Order the markers are listed in the settings window:
 -- skull, cross, square, diamond, star, triangle, moon, circle.
@@ -61,6 +61,25 @@ local header -- secure frame holding the toggle's state, made with the buttons
 -- leaves a target frame, or the frame is hidden.
 local RESET_TOGGLE = 'self:GetFrameRef("hmfheader"):SetAttribute("lastmark", 0)\n'
 local quietUntil = 0 -- clear-all chat lines are hidden until this time (GetTime)
+
+-- The "press again" toggle only knows which mark the last press applied.
+-- This tries to read the target's real mark and use that instead, but on
+-- WoW Forever the game reports the mark as a hidden ("secret") value, which
+-- an addon cannot use. That counts as "no mark", so in practice this wipes
+-- the memory whenever the target or its mark changes: a mark applied some
+-- other way takes two presses to clear. Should the game ever stop hiding the
+-- value, this starts working without any change. In combat the secure state
+-- cannot be changed from addon code, so there it stays as the last press
+-- left it.
+local function SyncLastMark()
+    if not header or InCombatLockdown() then return end
+    local index = 0
+    local ok, value = pcall(GetRaidTargetIndex, "target")
+    if ok and not (issecretvalue and issecretvalue(value)) and type(value) == "number" then
+        index = value
+    end
+    header:SetAttribute("lastmark", index)
+end
 local UpdateMinimapButton -- defined with the minimap button, further down
 -- Owns the always-on binding for the clear-all hotkey.
 local globalBinds = CreateFrame("Frame", "HoverMarksForeverGlobalBinds", UIParent)
@@ -152,6 +171,19 @@ local function BuildButtons()
     -- in turn, and the game prints a chat line for each. Hide those lines
     -- for a moment after the clear key is used (see QuietClearAll above).
     clear:HookScript("PreClick", function() quietUntil = GetTime() + 2 end)
+    -- Clears only the current target's mark. It needs no knowledge of what
+    -- mark the target has, so unlike "press again" it works on the first
+    -- press every time.
+    local clearTarget = CreateFrame("Button", PREFIX .. "ClearTarget", UIParent, "SecureActionButtonTemplate")
+    clearTarget:RegisterForClicks("AnyDown")
+    clearTarget:SetAttribute("useOnKeyDown", true)
+    clearTarget:SetAttribute("type", "raidtarget")
+    clearTarget:SetAttribute("action", "clear")
+    clearTarget:SetAttribute("marker", 0)
+    clearTarget:SetAttribute("unit", "target")
+    clearTarget:SetAttribute("checkselfcast", false)
+    clearTarget:SetAttribute("checkfocuscast", false)
+    header:WrapScript(clearTarget, "OnClick", [[ control:SetAttribute("lastmark", 0) ]])
     buttonsBuilt = true
 end
 
@@ -177,8 +209,10 @@ local function Attach(host, hostName)
         if layer.SetPropagateMouseMotion then
             pcall(layer.SetPropagateMouseMotion, layer, true)
         end
-        -- Each hover starts the toggle afresh: the first press applies.
+        -- Each hover starts the toggle afresh; out of combat it then reads
+        -- the target's real mark (the hook runs after the secure code).
         layer:SetFrameRef("hmfheader", header)
+        layer:HookScript("OnEnter", SyncLastMark)
         layer:SetAttribute("_onenter", enterSnippet)
         layer:SetAttribute("_onleave", RESET_TOGGLE .. "self:ClearBindings()")
         -- Losing the target while hovering hides the frame without a "leave".
@@ -230,21 +264,30 @@ local function Apply()
         header:SetAttribute("toggleon", db.toggle and 1 or 0)
         header:SetAttribute("lastmark", 0)
     end
-    -- Ctrl + a marker's key clears every marker instead of applying that one.
-    -- These lines go first, so a marker whose own key already uses Ctrl
-    -- (and so would collide) still wins on that key.
+    -- Holding a modifier with a mark's key clears instead of applying:
+    --   Ctrl  + key  clears every mark on every unit
+    --   Shift + key  clears just the current target's mark
+    -- These lines go first, so a mark whose own key already uses that
+    -- modifier (and so would collide) still wins on that key.
     if db.enabled then
-        for marker = 1, NUM_MARKERS do
-            local key = db.binds[marker]
-            if key then
-                local base = key:match("[^-]+$") or "-"
-                local prefix = key:sub(1, #key - #base)
-                if not prefix:find("CTRL-", 1, true) then
-                    -- Keep the game's ALT-CTRL-SHIFT modifier order.
-                    local combo = (prefix:find("ALT-", 1, true) and "ALT-" or "") .. "CTRL-"
-                        .. (prefix:find("SHIFT-", 1, true) and "SHIFT-" or "") .. base
-                    lines[#lines + 1] = ("self:SetBindingClick(true, %q, %q, \"LeftButton\")")
-                        :format(combo, PREFIX .. "Clear")
+        for _, modifier in ipairs({ "CTRL", "SHIFT" }) do
+            local clearButton = PREFIX .. (modifier == "CTRL" and "Clear" or "ClearTarget")
+            for marker = 1, NUM_MARKERS do
+                local key = db.binds[marker]
+                if key then
+                    local base = key:match("[^-]+$") or "-"
+                    local prefix = key:sub(1, #key - #base)
+                    if not prefix:find(modifier .. "-", 1, true) then
+                        -- The key plus the extra modifier, in the game's
+                        -- ALT-CTRL-SHIFT order.
+                        local function Has(name)
+                            return modifier == name or prefix:find(name .. "-", 1, true)
+                        end
+                        local combo = (Has("ALT") and "ALT-" or "") .. (Has("CTRL") and "CTRL-" or "")
+                            .. (Has("SHIFT") and "SHIFT-" or "") .. base
+                        lines[#lines + 1] = ("self:SetBindingClick(true, %q, %q, \"LeftButton\")")
+                            :format(combo, clearButton)
+                    end
                 end
             end
         end
@@ -261,6 +304,7 @@ local function Apply()
         ClearOverrideBindings(overlay)
         overlay:SetAttribute("_onenter", enterSnippet)
     end
+    SyncLastMark()
     return true
 end
 
@@ -689,6 +733,7 @@ local function BuildPanel()
     check.tipLines = {
         "—",
         "Pressing a mark's mouseover hotkey again clears that particular mark.",
+        "The game hides a target's mark from addons, so this clears marks applied with these hotkeys. A mark applied any other way takes two presses.",
         "|cffdbc794Only works while your mouse is over a target frame.|r", -- the headings' beige
     }
     check:SetScript("OnClick", OnToggleClick)
@@ -1046,6 +1091,7 @@ events:RegisterEvent("PLAYER_LOGIN")
 events:RegisterEvent("PLAYER_ENTERING_WORLD")
 events:RegisterEvent("PLAYER_TARGET_CHANGED")
 events:RegisterEvent("PLAYER_REGEN_ENABLED")
+events:RegisterEvent("RAID_TARGET_UPDATE")
 events:SetScript("OnEvent", function(_, event, name)
     if event == "ADDON_LOADED" then
         if name ~= ADDON then return end
@@ -1062,14 +1108,18 @@ events:SetScript("OnEvent", function(_, event, name)
     elseif event == "PLAYER_TARGET_CHANGED" then
         -- Cheap: a dozen name lookups. Catches frames created on first use.
         AttachAll()
-        -- A new target starts the "press again" toggle afresh. In combat the
-        -- state cannot be changed from here; it resets on the next hover.
-        if header and not InCombatLockdown() then header:SetAttribute("lastmark", 0) end
+        -- A new target: the toggle reads its real mark (out of combat).
+        SyncLastMark()
+    elseif event == "RAID_TARGET_UPDATE" then
+        -- Someone changed a mark, so re-read the target's.
+        SyncLastMark()
     elseif pending then
         -- Leaving combat with a change waiting.
         Apply()
         Refresh()
+        SyncLastMark()
     else
         AttachAll()
+        SyncLastMark()
     end
 end)

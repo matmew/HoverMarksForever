@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.2.2
+
+- New: hold Shift with a mark's hotkey to clear just your target's mark. It works
+  on the first press every time, whatever applied the mark, including on yourself.
+  Ctrl plus a mark's hotkey still clears every mark.
+- "Press again to clear" now works reliably on marks you applied with the hotkeys,
+  including in combat. The game hides a target's mark from addons, so a mark
+  applied any other way takes two presses; the checkbox tooltip now says so.
+
 ## 1.2.1
 
 - HoverMarks Forever now appears in the game's addon menu, the list opened from the

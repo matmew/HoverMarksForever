@@ -65,8 +65,11 @@ Type `/hmf`, or right click the minimap button, to open the settings window.
   combinations such as Shift-1 work too.
 - Right click a mark to unbind it.
 - Tick "Press again to clear" to make a second press of a mark's hotkey clear
-  that mark. Hold Ctrl with a mark's hotkey to clear every mark. Both only work
-  while your mouse is over a target frame.
+  that mark. The game hides a target's mark from addons, so this clears marks
+  applied with these hotkeys; a mark applied any other way takes two presses.
+  Hold Shift with a mark's hotkey to clear just the target's mark, or Ctrl to
+  clear every mark. All of these only work while your mouse is over a target
+  frame.
 - The "clear all" hotkey is bound the same way, in its own section below the
   marks. It starts unbound.
 - The Defaults button restores the original hotkeys and window position, turns
